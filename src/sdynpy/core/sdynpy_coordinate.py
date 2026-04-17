@@ -280,7 +280,7 @@ class CoordinateArray(SdynpyArray):
             if index.shape[-1] > 1:
                 raise ValueError(f'Coordinate {coordinate} found {index.shape[-1]} times in {self}')
             indices[(slice(None),)+check_index] = index[...,0]
-            signs[check_index] = self[tuple(index)].sign()*coord.sign()
+            signs[check_index] = self[tuple(index[...,0])].sign()*coord.sign()
         return tuple(indices),signs
 
     @classmethod

@@ -34,7 +34,7 @@ an overview of recommended workflows and a summary of current functionality.
 - [Documentation](https://sandialabs.github.io/sdynpy/)
 - [Project](https://github.com/sandialabs/sdynpy)
 - [Releases](https://github.com/sandialabs/sdynpy/releases)
-- [Showcase](https://sandialabs.github.io/sdynpy/sdynpy_showcase.html)
+- [Tutorial](https://sandialabs.github.io/sdynpy/sdynpy_showcase.html)
 
 ## Contents
 

@@ -32,11 +32,11 @@ from ..core.sdynpy_data import (TransferFunctionArray, CoherenceArray,
                                 join as data_join)
 from ..core.sdynpy_geometry import (Geometry,GeometryPlotter,ShapePlotter)
 from ..core.sdynpy_coordinate import CoordinateArray, coordinate_array as sd_coordinate_array
-from .sdynpy_signal_processing_gui import SignalProcessingGUI
-from .sdynpy_polypy import PolyPy_GUI
-from .sdynpy_smac import SMAC_GUI
+from ..modal.sdynpy_signal_processing_gui import SignalProcessingGUI
+from ..modal.sdynpy_polypy import PolyPy_GUI
+from ..modal.sdynpy_smac import SMAC_GUI
 from ..fileio.sdynpy_rattlesnake import read_modal_data
-from ..doc.sdynpy_latex import (
+from .sdynpy_latex import (
     figure as latex_figure, table as latex_table,
     create_data_quality_summary, create_geometry_overview,
     create_mode_fitting_summary, create_mode_shape_figures, create_rigid_body_analysis)
@@ -228,7 +228,7 @@ class ModalTest:
 
     def set_time_histories(self, time_histories):
         self.time_histories = time_histories
-        self.sample_rate = 1/time_histories.abscissa
+        self.sample_rate = 1/time_histories.abscissa_spacing
 
     def set_autopower_spectra(self, autopower_spectra):
         self.autopower_spectra = autopower_spectra

@@ -22,3 +22,5 @@ from .sdynpy_latex import create_latex_summary
 
 from . import sdynpy_ppt as ppt
 from . import sdynpy_latex as latex
+from .sdynpy_vibration_test import RandomVibTest
+from .sdynpy_modal_test import read_modal_fit_data, ModalTest

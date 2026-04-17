@@ -37,7 +37,8 @@ from ..signal_processing.sdynpy_cpsd import (cpsd as sp_cpsd,
                                              cpsd_coherence as sp_coherence,
                                              cpsd_to_time_history,
                                              cpsd_from_coh_phs,
-                                             db2scale)
+                                             db2scale,
+                                             nth_octave_freqs)
 from ..signal_processing.sdynpy_srs import (srs as sp_srs,
                                             octspace,
                                             sum_decayed_sines as sp_sds,
@@ -2217,6 +2218,81 @@ class NDDataArray(SdynpyArray):
 
         return filtered_data
 
+    @staticmethod
+    def get_abscissa_limits(data_arrays):
+        """Compute the smallest overlapping x-axis range across one or more data arrays.
+
+        Parameters
+        ----------
+        data_arrays : NDDataArray or iterable of NDDataArray
+            A single data array or iterable of data arrays whose abscissa ranges are
+            intersected to find the common (narrowest) x range.
+
+        Returns
+        -------
+        list
+            A two-element list ``[xmin, xmax]`` representing the intersection of all
+            finite abscissa ranges across the provided arrays.
+        """
+        if isinstance(data_arrays, NDDataArray):
+            xlim = [np.min(data_arrays.abscissa[~np.isnan(data_arrays.ordinate)]),
+                    np.max(data_arrays.abscissa[~np.isnan(data_arrays.ordinate)])]
+        else:
+            xlim = [None, None]
+            for data_array in data_arrays:
+                if np.any(~np.isnan(data_array.ordinate)):
+                    if any(lim is None for lim in xlim):
+                        xlim = [np.nanmin(data_array.abscissa[~np.isnan(data_array.ordinate)]),
+                                np.nanmax(data_array.abscissa[~np.isnan(data_array.ordinate)])]
+                    else:
+                        xlim = [max(np.nanmin(data_array.abscissa[~np.isnan(data_array.ordinate)]), min(xlim)),
+                                min(np.nanmax(data_array.abscissa[~np.isnan(data_array.ordinate)]), max(xlim))]
+        return xlim
+
+    @staticmethod
+    def get_ordinate_limits(data_arrays, xlim: list):
+        """Compute the y-axis limits for one or more data arrays within x bounds.
+
+        Parameters
+        ----------
+        data_arrays : NDDataArray or iterable of NDDataArray
+            A single data array or iterable of data arrays whose ordinate ranges are
+            combined (union) to find the overall y range within ``xlim``.
+        xlim : list
+            Two-element list ``[xmin, xmax]`` restricting the abscissa range used
+            when computing y limits.
+
+        Returns
+        -------
+        list
+            A two-element list ``[ymin, ymax]``.
+        """
+        if isinstance(data_arrays, NDDataArray):
+            ordinate = data_arrays.extract_elements_by_abscissa(min(xlim), max(xlim)).ordinate
+            if isinstance(data_arrays, PowerSpectralDensityArray):
+                ylim = [np.min(np.abs(ordinate)), np.max(np.abs(ordinate))]
+            else:
+                ylim = [np.min(ordinate), np.max(ordinate)]
+        else:
+            ylim = [None, None]
+            for data_array in data_arrays:
+                if np.any(~np.isnan(data_array.ordinate)):
+                    ordinate = data_array.extract_elements_by_abscissa(min(xlim), max(xlim)).ordinate
+                    ordinate = ordinate[~np.isnan(ordinate)]
+                    if any(lim is None for lim in ylim):
+                        if isinstance(data_array, PowerSpectralDensityArray):
+                            ylim = [np.min(np.abs(ordinate)), np.max(np.abs(ordinate))]
+                        else:
+                            ylim = [np.min(ordinate), np.max(ordinate)]
+                    else:
+                        if isinstance(data_array, PowerSpectralDensityArray):
+                            ylim = [min(np.nanmin(np.abs(ordinate)), min(ylim)),
+                                    max(np.nanmax(np.abs(ordinate)), max(ylim))]
+                        else:
+                            ylim = [min(np.nanmin(ordinate), min(ylim)),
+                                    max(np.nanmax(ordinate), max(ylim))]
+        return ylim
+
 class TimeHistoryArray(NDDataArray):
     """Data array used to store time history data"""
     def __new__(subtype, shape, nelements, buffer=None, offset=0,
@@ -2604,6 +2680,57 @@ class TimeHistoryArray(NDDataArray):
                          self.comment1.copy(), self.comment2.copy(), self.comment3.copy(), self.comment4.copy(),
                          self.comment5.copy())
         return srs
+
+    def hilbert(self, *hilbert_args, **hilbert_kwargs):
+        """Computes the hilbert transform of the signal
+
+        Any arguments passed to this method will be passed to the `scipy.signal.hilbert` function.
+
+        Returns
+        -------
+        TimeHistoryArray
+            A time history array containing the imaginary part of the analytic signal, which is the
+            hilber transform of the signal.
+
+        Raises
+        ------
+        ValueError
+            If `axis` is specified as a keyword argument.  The axis will automatically be set to the
+            last dimension, which corresponds to the time samples in the signal.
+        """        
+        if 'axis' in hilbert_kwargs:
+            raise ValueError('axis cannot be specified because it is automatically -1')
+        ana_sig = sig.hilbert(self.ordinate, *hilbert_args, **hilbert_kwargs, axis=-1)
+        output = self.copy()
+        output.ordinate[...] = ana_sig.imag
+        return output
+
+    def envelope(self, *envelope_args, **envelope_kwargs):
+        """Computes the envelope of the time history array.
+
+        Any arguments passed to htis method will be passed to the `scipy.signal.envelope` function.
+
+        Returns
+        -------
+        TimeHistoryArray
+            Returns a TimeHistoryArray object that includes the residual if `residual=None` is not
+            prescribed.  If `residual=None` is prescribed, then the output TimeHistoryArray will
+            be the same size as the original TimeHistoryArray.  If a residual is prescribed (the
+            default case), then the output will be size (2, *self.shape), with the residual
+            stacked along the first axis.  This allows unpacking, e.g.,
+            `envelope, residual = self.envelope()`.
+
+        Raises
+        ------
+        ValueError
+            If `axis` is specified as a keyword argument.  The axis will automatically be set to the
+            last dimension, which corresponds to the time samples in the signal.
+        """        
+        if 'axis' in envelope_kwargs:
+            raise ValueError('axis cannot be specified because it is automatically -1')
+        env = sig.envelope(self.ordinate, *envelope_args, **envelope_kwargs)
+        output = time_history_array(self.abscissa,env,self.coordinate,self.comment1, self.comment2, self.comment3, self.comment4, self.comment5)
+        return output
 
     def filter(self,filter_order, frequency, filter_type = 'low',
                filter_method = 'filtfilt', filter_kwargs = None):
@@ -5127,12 +5254,23 @@ class PowerSpectralDensityArray(NDDataArray):
             PowerSpectralDensityArrays where the response is equal to the reference
 
         """
-        indices = np.where(abs(self.coordinate[..., 0]) == abs(self.coordinate[..., 1]))
-        return self[indices]
+        if self.ndim > 0:
+            indices = np.where(abs(self.coordinate[..., 0]) == abs(self.coordinate[..., 1]))
+            return self[indices]
+        elif self.ndim == 0:
+            if abs(self.coordinate[..., 0]) == abs(self.coordinate[..., 1]):
+                return self
+            else:
+                return PowerSpectralDensityArray(shape=(),nelements=self.num_elements)
 
-    def rms(self):
+    def rms(self,oct_order=None):
         """
         Compute RMSs of the PSDs using the diagonals
+        
+        Parameters
+        ----------
+        oct_order : int, optional
+            octave type, 1/octave order. 3 represents 1/3 octave bands. default is None
 
         Returns
         -------
@@ -5141,8 +5279,18 @@ class PowerSpectralDensityArray(NDDataArray):
 
         """
         asd = self.get_asd()
-        abscissa_spacing = self.abscissa_spacing
-        return np.sqrt(np.sum(asd.ordinate.real, axis=-1)*abscissa_spacing)
+        if oct_order == None:
+            abscissa_spacing = self.abscissa_spacing
+            rms_levels = np.sqrt(np.sum(asd.ordinate.real, axis=-1)*abscissa_spacing)
+        else:
+            # Get Spectra Limits
+            xlim = np.array([np.min(asd.abscissa),np.max(asd.abscissa)])
+            # Get Frequency Spacing
+            nominal_band_centers,band_lb,band_ub,band_centers = nth_octave_freqs(freq=xlim,oct_order=oct_order)
+            # Compute RMS Levels
+            df = band_ub-band_lb
+            rms_levels = np.sqrt(np.sum(df*asd.ordinate.real,axis=-1))
+        return rms_levels
 
     def plot_asds(self, figure_kwargs={}, linewidth=1):
         asds = self.get_asd()
